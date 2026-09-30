@@ -111,12 +111,16 @@ The LLM chooses which function to call and provides the parameter values. The SQ
 
 **Technical detail:** Every result from the database passes through a Python validation function before reaching the LangGraph agent. The checks are:
 
-- **STALE_SENSOR:** If the same temperature value appears more than N consecutive readings, flag as SENSOR_SUSPECT
-- **OUT_OF_RANGE:** Temperature below -30°C or above 60°C is a sensor fault, not real cargo data
-- **GPS_DRIFT:** If GPS coordinates have not moved in 2 hours but truck status is 'in transit', flag for investigation
-- **DATA_AGE:** If the most recent reading is more than 15 minutes old, flag as STALE_FEED
+- **STALE_SENSOR:** The same temperature value in 8 or more consecutive readings
+- **OUT_OF_RANGE:** Temperature below -30°C or above 60°C — a sensor fault, not real cargo data
+- **GPS_FROZEN:** GPS coordinates have not moved (beyond 25 m of jitter) for 2 hours while `trip_status` is `in_transit`
+- **DATA_AGE:** If the most recent reading is more than 15 minutes old, or a reading follows a gap of more than 15 minutes in the feed, flag as STALE_FEED
 
-These flags are added as a `data_quality_flag` field in the query result. The system prompt instructs the agent: if any reading is flagged, include the flag explicitly in the response and do not make a definitive recommendation without noting the data quality concern.
+A reading can raise several flags at once (e.g. a stuck sensor right after a feed gap). Each result row gets `data_quality_flags` — every flag raised, most severe first (OUT_OF_RANGE > STALE_SENSOR > GPS_FROZEN > STALE_FEED) — plus a single headline `data_quality_flag` (the most severe, or CLEAN). The full list goes to the audit log; the headline is what the UI shows.
+
+Because three of the four checks look at patterns over time, the gate needs history: every telemetry tool fetches at least a 135-minute lookback window per truck, runs the gate over it, and only then narrows to what the agent asked for. The system prompt instructs the agent: if any reading is flagged, include the flag explicitly in the response and do not make a definitive recommendation without noting the data quality concern.
+
+**The gate never drops readings, it annotates them.** A reading of 85 °C is stored exactly as received and flagged OUT_OF_RANGE at query time. Dropping it at ingest would mean the gate could never see the fault pattern, and an auditor could never reconstruct what the truck actually reported. The schema enforces this: `temperature_c` has no range constraint, and a test (`test_faulty_temperature_still_lands`) proves an 85 °C reading can be stored.
 
 This is the same mindset as dbt testing — validating data quality at the layer closest to the source — applied to a live telemetry context instead of a batch warehouse.
 
@@ -199,20 +203,22 @@ This is the biggest table. A new row is inserted roughly every 10 minutes per tr
 |---|---|---|
 | reading_id | BIGSERIAL PK | Auto-incrementing ID for each sensor reading. |
 | truck_id | FK → trucks | Which truck sent this reading. |
+| shipment_id | VARCHAR(20) | The load this reading belongs to, e.g. 'SHP-014-03'. A truck carries a new shipment on each leg. Used by `get_temperature_history()`. |
 | recorded_at | TIMESTAMPTZ | Exactly when this reading was taken on the truck's onboard system. |
 | ingested_at | TIMESTAMPTZ | When our system received the reading. The gap between recorded_at and ingested_at reveals connectivity lag. |
 | lat | FLOAT | GPS latitude. Combined with lon, tells us exactly where the truck is. |
 | lon | FLOAT | GPS longitude. |
+| trip_status | ENUM `trip_status` | One of `in_transit`, `at_depot`, `completed` (PostgreSQL enum type, so the column can never hold freeform strings). A truck parked at a depot is expected to have static GPS; one 'in_transit' is not — this is what the GPS_FROZEN check keys on. |
 | temperature_c | FLOAT | The fridge temperature reading in Celsius. |
 | cargo_condition_code | VARCHAR(10) | A code from the truck system: OK, WARN, CRIT. |
 | delay_probability | FLOAT | Model score 0.0–1.0 of how likely this shipment is to be delayed. |
 | route_risk_index | FLOAT | Overall route risk score from the logistics platform. |
 
-#### `VW_FLEET_WITH_QUALITY` — computed `data_quality_flag`
+#### `vw_fleet_with_quality` + quality gate — computed `data_quality_flag`
 
 | Column | Type | What it means |
 |---|---|---|
-| data_quality_flag | VARCHAR(30) (computed) | CLEAN, STALE_SENSOR, OUT_OF_RANGE, GPS_DRIFT, or STALE_FEED. Not stored in the telemetry table. Computed at query time by the `apply_quality_checks()` function in `src/data_quality.py`, which wraps every database result before it reaches the agent. Storing it would mean flags go stale between the time of insert and the time of query. A view (`VW_FLEET_WITH_QUALITY`) applies the checks and presents the flag as a computed column. THIS DOES NOT EXIST IN THE REFERENCE PROJECT. |
+| data_quality_flag | VARCHAR(30) (computed) | CLEAN, STALE_SENSOR, OUT_OF_RANGE, GPS_FROZEN, or STALE_FEED. Not stored in the telemetry table. Computed at query time by the `apply_quality_checks()` function in `src/data_quality.py`, which wraps every database result before it reaches the agent. Storing it would mean flags go stale between the time of insert and the time of query. The view `vw_fleet_with_quality` joins each reading to its truck's cargo thresholds and is the only telemetry object the agent role can read; the tool functions fetch from it and `apply_quality_checks()` adds the flag. The checks live in Python, not SQL, so there is one tested implementation. THIS DOES NOT EXIST IN THE REFERENCE PROJECT. |
 
 ### 4.3 `sop_chunks` — The Rulebook, Chunked for AI Retrieval
 
@@ -238,7 +244,7 @@ Every single agent reasoning cycle writes one row here — one row per dispatche
 | log_id | SERIAL PK | Auto-incrementing row number. |
 | amends_log_id | INT NULLABLE (FK → audit_log.log_id) | NULL for agent-generated rows. For human-decision rows, the `log_id` of the original agent row being accepted or overridden — links the two without modifying the original. |
 | session_id | UUID | Which dispatcher session this came from. One session = one browser tab. |
-| created_at | TIMESTAMPTZ | Exact timestamp, set in Python before the insert (not by a database default) so the hash covers a value we control. Cannot be modified after insert. |
+| created_at | TIMESTAMPTZ | Exact timestamp, set in Python before the insert — no database default. `row_hash` is computed in Python *before* the INSERT, so it must know `created_at` at that moment. If the database filled it in, the stored value would differ from the hashed one, and reconciling them would need an UPDATE, which the agent role does not have. Cannot be modified after insert. |
 | dispatcher_question | TEXT | The exact question the dispatcher typed. Verbatim. |
 | tool_calls | JSONB | Array of all tool calls made during this reasoning cycle, each as `{tool_name, input, output, quality_flags}`. One row per dispatcher question, not one row per tool call. Makes the sample query in §10.2 unambiguous: `SELECT * FROM audit_log WHERE tool_calls @> '[{"tool_name":"get_truck_telemetry"}]'`. |
 | data_quality_flags | JSONB | Any quality flags raised during this reasoning cycle. |
@@ -300,11 +306,11 @@ The structure follows the separation of concerns principle: data, logic, API, an
 | `data/synthetic/` | The synthetic data generator output. Trucks table, telemetry with injected faults. |
 | `data/policy/` | The SOP markdown files. Each version is a separate file. Supersession is tracked in the filename metadata. |
 | `scripts/generate_data.py` | Generates the synthetic telemetry dataset with realistic fault injection: stuck sensors, GPS dropouts, temperature spikes. Run once. |
-| `scripts/setup_db.sql` | Creates all PostgreSQL tables and `VW_FLEET_WITH_QUALITY`. Grants INSERT on audit_log to the agent role. The reference project's permission bug is fixed here. |
+| `scripts/setup_db.sql` | Creates all PostgreSQL tables and `vw_fleet_with_quality`. Grants the agent role exactly SELECT + INSERT on audit_log, USAGE on its sequence, and SELECT on the view — nothing else. The reference project's permission bug is fixed here. |
 | `scripts/ingest_telemetry.py` | Loads synthetic data into PostgreSQL. Creates the curated views. |
 | `scripts/ingest_sop_qdrant.py` | Chunks SOP documents, embeds them with BAAI/bge-small-en-v1.5, loads into Qdrant with version metadata. |
-| `src/data_quality.py` | THE KEY FILE. Validation functions: `detect_stale_sensor()`, `detect_out_of_range()`, `detect_gps_drift()`, `detect_stale_feed()`, wrapped by `apply_quality_checks()`. Returns a `data_quality_flag` for each reading. |
-| `src/tools/telemetry.py` | The four parameterised query functions. No raw SQL accepted from the LLM. |
+| `src/data_quality.py` | THE KEY FILE. Validation functions: `detect_stale_sensor()`, `detect_out_of_range()`, `detect_gps_frozen()`, `detect_stale_feed()`, wrapped by `apply_quality_checks()`. Returns a `data_quality_flag` for each reading. |
+| `src/tools/telemetry.py` | The four parameterised query functions. No raw SQL accepted from the LLM. Each is fetch-then-validate, not a plain `SELECT WHERE` wrapper: fetches the lookback window per truck, runs `apply_quality_checks()` over it, returns flagged rows for the requested scope. |
 | `src/tools/weather.py` | Route-interpolated weather: fetches conditions at multiple points along the truck's route, not just current GPS position. |
 | `src/tools/sop.py` | SOP retrieval with version filtering. Returns chunk content + section reference + version number. |
 | `src/audit.py` | Audit log writer. SHA-256 hash chain with advisory-lock serialisation. Structured JSONB writes. Human decision updater. `verify_chain()`. |

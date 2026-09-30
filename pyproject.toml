@@ -6,12 +6,15 @@ authors = [{ name = "Prathamesh Mishra", email = "mprathamesh2023@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "psycopg[binary]>=3.2",
     "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.11",
+    "pgserver>=0.1.4",
     "pytest>=8.3",
     "ruff>=0.6",
 ]
@@ -26,7 +29,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "api", "tests"]
+files = ["src", "api", "scripts", "tests"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
