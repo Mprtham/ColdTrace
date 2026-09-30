@@ -54,6 +54,16 @@ curl "localhost:8000/audit?tool_name=get_truck_telemetry&decision=overridden&lim
 curl localhost:8000/audit/verify
 ```
 
+## Dispatcher UI
+
+```bash
+uv run uvicorn api.main:app                  # terminal 1: the API
+uv run streamlit run ui/app.py               # terminal 2: the UI (API_URL defaults to :8000)
+```
+
+Cost per query is shown when `LLM_PRICE_IN_PER_MTOK` and `LLM_PRICE_OUT_PER_MTOK` are set
+(USD per million tokens, from the provider's pricing page); a local Ollama model shows $0.
+
 ## Checks
 
 ```bash

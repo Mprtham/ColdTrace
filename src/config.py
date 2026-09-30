@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # static synthetic fleet does not go STALE_FEED 15 minutes after ingest.
     clock_mode: Literal["live", "replay"] = "live"
 
+    # UI -> API. The Streamlit app only talks HTTP; it never touches the database.
+    api_url: str = "http://localhost:8000"
+
+    # USD per million tokens, for the cost-per-query footer. Unset = cost not shown
+    # (a local Ollama model costs nothing per token; DeepSeek prices change, so they
+    # are configuration, not code).
+    llm_price_in_per_mtok: float | None = None
+    llm_price_out_per_mtok: float | None = None
+
     # Qdrant: local on-disk mode unless a server URL is given
     qdrant_path: str = "./qdrant_storage"
     qdrant_url: str | None = None

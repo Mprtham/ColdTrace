@@ -108,45 +108,65 @@ class SearchSopArgs(BaseModel):
 def _telemetry(
     result: tel.TelemetryResult, limit: int = LLM_ROW_LIMIT, problems_first: bool = True
 ) -> ToolOutput:
-    def problem_first(r: tel.TruckReading) -> tuple[int, str]:
-        ok = r.data_quality_flag == "CLEAN" and r.temp_in_range and r.risk_level == "low"
-        return (1 if ok else 0, r.truck_id)
-
-    rows = sorted(result.readings, key=problem_first) if problems_first else result.readings
-    compact = [
-        {
-            "truck_id": r.truck_id,
-            "shipment_id": r.shipment_id,
-            "cargo_type": r.cargo_type,
-            "recorded_at": r.recorded_at.strftime("%Y-%m-%d %H:%M UTC"),
-            "temperature_c": r.temperature_c,
-            "safe_range_c": [r.min_temp_c, r.max_temp_c],
-            "temp_in_range": r.temp_in_range,
-            "condition": r.cargo_condition_code,
-            "delay_probability": r.delay_probability,
-            "risk_level": r.risk_level,
-            "trip_status": r.trip_status,
-            "data_quality_flag": r.data_quality_flag,
-            **({"all_flags": r.data_quality_flags} if len(r.data_quality_flags) > 1 else {}),
-            **({"distance_km": r.distance_km} if r.distance_km is not None else {}),
-            **(
-                {"position": [r.lat, r.lon]}
-                if result.tool_name != "get_temperature_history"
-                else {}
-            ),
-        }
-        for r in rows
-    ]
-    for_llm = {
+    """Compact view for the model. When rows must be cut, the rows that matter are never
+    the ones cut: fleet views sort problem trucks first; history keeps every flagged or
+    out-of-range reading and fills the rest with the most recent, in time order."""
+    readings = result.readings
+    if problems_first:
+        shown = sorted(readings, key=lambda r: (0 if _is_problem(r) else 1, r.truck_id))[:limit]
+        order = "trucks with problems first"
+    else:
+        shown = _keep_problems_then_recent(readings, limit)
+        order = "every flagged or out-of-range reading, then the most recent, oldest first"
+    for_llm: dict[str, Any] = {
         "as_of": result.as_of.strftime("%Y-%m-%d %H:%M UTC"),
-        "count": len(compact),
+        "count": len(readings),
         "quality_flags": result.quality_flags,
-        "readings": compact[:limit] if problems_first else compact[-limit:],
+        "readings": [_compact(r, result.tool_name) for r in shown],
     }
-    if len(compact) > limit:
-        order = "trucks with problems first" if problems_first else "most recent"
-        for_llm["note"] = f"showing {limit} of {len(compact)}, {order}"
+    if len(shown) < len(readings):
+        for_llm["note"] = f"showing {len(shown)} of {len(readings)}: {order}"
     return ToolOutput(result.to_json(), for_llm, result.quality_flags)
+
+
+def _is_problem(r: tel.TruckReading) -> bool:
+    return r.data_quality_flag != "CLEAN" or not r.temp_in_range or r.risk_level != "low"
+
+
+def _keep_problems_then_recent(
+    readings: list[tel.TruckReading], limit: int
+) -> list[tel.TruckReading]:
+    if len(readings) <= limit:
+        return readings
+    problems = [
+        i for i, r in enumerate(readings) if r.data_quality_flag != "CLEAN" or not r.temp_in_range
+    ]
+    keep = set(problems[-limit:])
+    for i in reversed(range(len(readings))):
+        if len(keep) >= limit:
+            break
+        keep.add(i)
+    return [readings[i] for i in sorted(keep)]
+
+
+def _compact(r: tel.TruckReading, tool_name: str) -> dict[str, Any]:
+    return {
+        "truck_id": r.truck_id,
+        "shipment_id": r.shipment_id,
+        "cargo_type": r.cargo_type,
+        "recorded_at": r.recorded_at.strftime("%Y-%m-%d %H:%M UTC"),
+        "temperature_c": r.temperature_c,
+        "safe_range_c": [r.min_temp_c, r.max_temp_c],
+        "temp_in_range": r.temp_in_range,
+        "condition": r.cargo_condition_code,
+        "delay_probability": r.delay_probability,
+        "risk_level": r.risk_level,
+        "trip_status": r.trip_status,
+        "data_quality_flag": r.data_quality_flag,
+        **({"all_flags": r.data_quality_flags} if len(r.data_quality_flags) > 1 else {}),
+        **({"distance_km": r.distance_km} if r.distance_km is not None else {}),
+        **({"position": [r.lat, r.lon]} if tool_name != "get_temperature_history" else {}),
+    }
 
 
 def _run_fleet(a: FleetStatusArgs, ctx: ToolContext) -> ToolOutput:
