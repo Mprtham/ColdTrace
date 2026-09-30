@@ -6,8 +6,11 @@ authors = [{ name = "Prathamesh Mishra", email = "mprathamesh2023@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastembed>=0.4",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.4",
+    "qdrant-client>=1.12",
+    "sentence-transformers>=6.1.0",
     "sqlalchemy>=2.0",
 ]
 
