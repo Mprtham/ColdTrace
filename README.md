@@ -23,6 +23,21 @@ refresh the demo data window.
 The database is Neon's free tier, which suspends compute after 5 minutes idle. The first
 query after a pause takes 1–2 seconds longer while it wakes; that is expected, not a fault.
 
+## Ask a question
+
+```bash
+uv run python -m scripts.ingest_sop_qdrant   # SOP -> local Qdrant (once)
+uv run python -m scripts.ask --replay "Find any trucks near Los Angeles with temperature problems and tell me what to do."
+```
+
+Prints the evidence (gather node) and the verdict (recommend node) separately, then the
+audit row and whether the hash chain verifies. `--replay` sets the clock to the newest
+reading in the database (or set `CLOCK_MODE=replay` in `.env`); without it, a fleet
+loaded more than 15 minutes ago is correctly flagged STALE_FEED everywhere.
+
+The LLM is local Ollama (`qwen2.5:7b`) by default; set `LLM_PROVIDER=deepseek` with
+`DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` to use DeepSeek.
+
 ## Checks
 
 ```bash

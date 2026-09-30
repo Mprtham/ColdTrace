@@ -133,6 +133,10 @@ This is the same mindset as dbt testing — validating data quality at the layer
 - **GATHER NODE:** Routes to whichever tools are actually needed for this specific question. If the dispatcher asks only about temperature, it does not also call the weather API unnecessarily. Returns structured evidence: raw tool outputs with data quality flags attached.
 - **RECOMMEND NODE:** Receives only the structured evidence from the Gather node. Has no access to raw tool calls. Its only job is to reason over the facts and produce a recommendation with SOP citation.
 
+Routing is enforced, not suggested: the router's intent decides which tools the gather node is even offered (a pure SOP question is offered only `search_sop`). Invalid arguments and tool errors are returned to the model as tool messages so it can correct itself — the self-correction the reference TDD claimed but its code never had (gap #3).
+
+The recommend node's output then passes deterministic guards, because a model's own claims cannot be trusted: a cited SOP clause must be one the SOP tool actually returned (otherwise it is removed and confidence drops); every truck named must appear in the evidence (otherwise a caveat is added and confidence drops to low); and evidence with data quality flags always carries a caveat and never high confidence. Before the model reasons, code also hands it a *key facts* list — which truck has which breach, delay or flag — so it does not have to pair numbers with trucks itself.
+
 The Streamlit UI shows both panels side by side — the Evidence Panel (what was found) and the Verdict Panel (what is recommended). A dispatcher can verify the evidence before trusting the recommendation, the same way a doctor shows you the test result before the diagnosis.
 
 #### Improvement D — Structured, Queryable Audit Log with Hash Chaining (Fixes Gaps #1 and #7)
@@ -315,7 +319,9 @@ The structure follows the separation of concerns principle: data, logic, API, an
 | `src/tools/weather.py` | Route-interpolated weather: fetches conditions at multiple points along the truck's route, not just current GPS position. |
 | `src/tools/sop.py` | SOP retrieval with version filtering. Returns chunk content + section reference + version number. |
 | `src/audit.py` | Audit log writer. SHA-256 hash chain with advisory-lock serialisation. Structured JSONB writes. Human decision updater. `verify_chain()`. |
-| `src/orchestrator.py` | LangGraph graph definition. Three nodes: router, gather, recommend. No fixed tool order. |
+| `src/orchestrator.py` | LangGraph graph definition. Three nodes: router, gather, recommend. No fixed tool order: the intent decides which tools gather is offered. Tool errors are fed back for self-correction; verdict guards check citations, truck IDs and quality flags. `run_query()` writes the audit row. |
+| `src/tools/registry.py` | The six tools as the LLM sees them: argument schemas (the only thing the model controls), runners, and a compact view of each result for the model's context alongside the full result for the audit log. |
+| `scripts/ask.py` | CLI: asks one question, prints Evidence and Verdict separately, then the audit row and chain status. The Phase 3 checkpoint. |
 | `src/prompts/` | System prompt files. Gather node and recommend node have separate prompts. The gather node is instructed to return only facts; the recommend node is instructed to never invent data. |
 | `api/main.py` | FastAPI application. Routes: `POST /query`, `POST /decision`, `GET /audit`. Separates HTTP logic from agent logic. |
 | `ui/app.py` | Streamlit frontend. Chat interface, evidence panel, verdict panel, audit tab. |
@@ -352,6 +358,7 @@ Being upfront about limitations is what distinguishes an engineer from someone w
 | Single tenant | No user authentication, no roles, no multi-organisation separation. One set of credentials, one audit log. | Auth0 or similar identity provider, row-level security in PostgreSQL, RBAC per organisation. |
 | Route weather is still point-in-time | The weather tool fetches conditions along a route by interpolating several GPS waypoints. It is better than the reference project's single-point lookup, but it is not a certified route forecast. | A paid route weather API (Tomorrow.io, ClimaCell) with true segment-by-segment forecasting. |
 | SOP is a minimal mock document | The SOP used is a short mock document with three rules. A real cold-chain SOP for a regulated carrier is hundreds of pages covering dozens of cargo types. | A real SOP document and a more sophisticated chunking strategy (semantic chunking, not fixed-size). |
+| Local LLM verdict quality | Development runs on a local 7B model (qwen2.5:7b via Ollama). The pipeline — routing, tool use, evidence, citation, audit — works end to end, but the 7B model's reasoning is unreliable: in testing it named the right truck but gave the wrong reason and cited the temperature rule for what was a delay problem. The guards catch invented citations and invented trucks, not a wrong reason for a real truck. | A stronger hosted model (DeepSeek via `LLM_PROVIDER=deepseek`), plus an evaluation set of dispatcher questions with expected verdicts, run on every prompt or model change. |
 | No feedback loop learning | When a dispatcher overrides the agent's recommendation, that override is logged but does not retrain the model. The system does not get smarter over time automatically. | Fine-tuning pipeline or RLHF system using the override logs as preference data. |
 
 ---

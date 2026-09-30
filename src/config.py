@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     coldtrace_admin_password: str | None = None  # scripts/setup_db.py, ingest
     coldtrace_agent_password: str | None = None  # the app
 
+    # live: as_of = now. replay: as_of = newest reading in the database, so a demo of the
+    # static synthetic fleet does not go STALE_FEED 15 minutes after ingest.
+    clock_mode: Literal["live", "replay"] = "live"
+
     # Qdrant: local on-disk mode unless a server URL is given
     qdrant_path: str = "./qdrant_storage"
     qdrant_url: str | None = None
