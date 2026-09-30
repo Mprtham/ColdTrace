@@ -323,7 +323,7 @@ The structure follows the separation of concerns principle: data, logic, API, an
 | `src/tools/registry.py` | The six tools as the LLM sees them: argument schemas (the only thing the model controls), runners, and a compact view of each result for the model's context alongside the full result for the audit log. |
 | `scripts/ask.py` | CLI: asks one question, prints Evidence and Verdict separately, then the audit row and chain status. The Phase 3 checkpoint. |
 | `src/prompts/` | System prompt files. Gather node and recommend node have separate prompts. The gather node is instructed to return only facts; the recommend node is instructed to never invent data. |
-| `api/main.py` | FastAPI application. Routes: `POST /query`, `POST /decision`, `GET /audit`. Separates HTTP logic from agent logic. |
+| `api/main.py` | FastAPI application. Separates HTTP logic from agent logic: each route validates input, calls one function in `src/`, maps errors to status codes. `POST /query` (question → evidence, verdict, `log_id`), `POST /decision` (accept/override by `log_id`; appends a row, session taken from the amended row), `GET /audit` (filter by session, tool, current decision; keyset pagination; tool inputs and flags, not full outputs), `GET /audit/{log_id}` (full row plus its decision history), `GET /audit/verify` (walks the hash chain), `GET /health`. |
 | `ui/app.py` | Streamlit frontend. Chat interface, evidence panel, verdict panel, audit tab. |
 | `docker-compose.yml` | Runs PostgreSQL + Qdrant + the app together. Single command to run everything locally. |
 | `tests/` | Unit tests for the data quality functions, the parameterised query functions, and the audit hash chain. Run in CI. |

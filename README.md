@@ -38,6 +38,22 @@ loaded more than 15 minutes ago is correctly flagged STALE_FEED everywhere.
 The LLM is local Ollama (`qwen2.5:7b`) by default; set `LLM_PROVIDER=deepseek` with
 `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` to use DeepSeek.
 
+## HTTP API
+
+```bash
+uv run uvicorn api.main:app --reload        # interactive docs at http://localhost:8000/docs
+```
+
+```bash
+curl -X POST localhost:8000/query -H "Content-Type: application/json"      -d '{"question": "Any trucks near Los Angeles with temperature problems?"}'
+# -> session_id, log_id, evidence, verdict, sop_cited, confidence, data_quality_flags, token_counts
+
+curl -X POST localhost:8000/decision -H "Content-Type: application/json"      -d '{"log_id": 3, "decision": "overridden", "reason": "Driver already at depot"}'
+
+curl "localhost:8000/audit?tool_name=get_truck_telemetry&decision=overridden&limit=20"
+curl localhost:8000/audit/verify
+```
+
 ## Checks
 
 ```bash

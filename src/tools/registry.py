@@ -78,7 +78,10 @@ class TruckTelemetryArgs(BaseModel):
 
 
 class TemperatureHistoryArgs(BaseModel):
-    shipment_id: str = Field(description="Shipment ID, e.g. SHP-014-03.")
+    shipment_id: str = Field(
+        description="Shipment ID (format SHP-NNN-NN). Use only an ID from the question or "
+        "from an earlier tool result; never make one up."
+    )
     hours: int = Field(6, description="How many hours back (1-72).")
 
 

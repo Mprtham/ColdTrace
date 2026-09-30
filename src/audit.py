@@ -126,18 +126,19 @@ def write_decision(
     conn: Conn,
     *,
     amends_log_id: int,
-    session_id: UUID | str,
+    session_id: UUID | str | None = None,
     decision: Decision,
     override_reason: str | None = None,
     created_at: datetime | None = None,
 ) -> AuditEntry:
-    """Record a dispatcher's accept/override as a new row amending an agent row."""
+    """Record a dispatcher's accept/override as a new row amending an agent row.
+    session_id defaults to the session of the row being decided on."""
     if decision not in ("accepted", "overridden"):
         raise ValueError(f"decision must be 'accepted' or 'overridden', got {decision!r}")
     if decision == "overridden" and not (override_reason and override_reason.strip()):
         raise ValueError("an override needs a reason")
     target = conn.execute(
-        "SELECT amends_log_id FROM audit_log WHERE log_id = %s", (amends_log_id,)
+        "SELECT amends_log_id, session_id FROM audit_log WHERE log_id = %s", (amends_log_id,)
     ).fetchone()
     if target is None:
         raise LookupError(f"no audit row {amends_log_id}")
@@ -147,7 +148,7 @@ def write_decision(
         conn,
         {
             "amends_log_id": amends_log_id,
-            "session_id": str(session_id),
+            "session_id": str(session_id or target["session_id"]),
             "created_at": created_at or datetime.now(UTC),
             "dispatcher_question": None,
             "tool_calls": [],
@@ -214,3 +215,78 @@ def current_decision(conn: Conn, log_id: int) -> str:
         (log_id,),
     ).fetchone()
     return row["human_decision"] if row else "pending"
+
+
+# --- Listing (GET /audit) --------------------------------------------------------------
+
+MAX_PAGE = 100
+
+
+@dataclass(frozen=True)
+class AuditPage:
+    items: list[dict[str, Any]]
+    next_cursor: int | None
+
+
+def read_audit(
+    conn: Conn,
+    *,
+    session_id: UUID | str | None = None,
+    tool_name: str | None = None,
+    decision: Literal["pending", "accepted", "overridden"] | None = None,
+    limit: int = 20,
+    cursor: int | None = None,
+) -> AuditPage:
+    """Agent rows, newest first, each with its current human decision.
+
+    Filters combine with AND. `tool_name` matches rows whose tool_calls include that tool
+    (JSONB containment — the query the reference project's text blob could not answer).
+    `decision` filters on the latest decision, `pending` meaning none yet. Pagination is
+    keyset: pass the returned next_cursor to get the following page.
+    """
+    if not 1 <= limit <= MAX_PAGE:
+        raise ValueError(f"limit must be in [1, {MAX_PAGE}]")
+    rows = conn.execute(
+        """
+        SELECT a.*,
+               COALESCE(d.human_decision, 'pending') AS current_decision,
+               d.override_reason AS decision_reason,
+               d.created_at      AS decided_at,
+               d.log_id          AS decision_log_id
+        FROM audit_log a
+        LEFT JOIN LATERAL (
+            SELECT x.log_id, x.human_decision, x.override_reason, x.created_at
+            FROM audit_log x
+            WHERE x.amends_log_id = a.log_id
+            ORDER BY x.log_id DESC
+            LIMIT 1
+        ) d ON TRUE
+        WHERE a.amends_log_id IS NULL
+          AND (%(session_id)s::uuid IS NULL OR a.session_id = %(session_id)s::uuid)
+          AND (%(tool_name)s::text IS NULL
+               OR a.tool_calls @> jsonb_build_array(
+                      jsonb_build_object('tool_name', %(tool_name)s::text)))
+          AND (%(decision)s::text IS NULL
+               OR COALESCE(d.human_decision, 'pending') = %(decision)s::text)
+          AND (%(cursor)s::int IS NULL OR a.log_id < %(cursor)s::int)
+        ORDER BY a.log_id DESC
+        LIMIT %(limit)s
+        """,
+        {
+            "session_id": str(session_id) if session_id else None,
+            "tool_name": tool_name,
+            "decision": decision,
+            "cursor": cursor,
+            "limit": limit + 1,
+        },
+    ).fetchall()
+    more = len(rows) > limit
+    items = rows[:limit]
+    return AuditPage(items, items[-1]["log_id"] if more and items else None)
+
+
+def get_audit_row(conn: Conn, log_id: int) -> dict[str, Any] | None:
+    row: dict[str, Any] | None = conn.execute(
+        "SELECT * FROM audit_log WHERE log_id = %s", (log_id,)
+    ).fetchone()
+    return row
