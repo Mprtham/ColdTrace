@@ -1,0 +1,30 @@
+#!/bin/sh
+# Enforces docs/DESIGN.md §12.1: sole authorship, no AI attribution.
+# Enable once per clone: git config core.hooksPath .githooks
+
+EXPECTED="Prathamesh Mishra <mprathamesh2023@gmail.com>"
+MSG_FILE="$1"
+
+fail() {
+    echo "commit-msg: $1" >&2
+    echo "See docs/DESIGN.md §12.1 (Git attribution)." >&2
+    exit 1
+}
+
+if grep -qi '^co-authored-by:' "$MSG_FILE"; then
+    fail "Co-authored-by trailers are forbidden."
+fi
+
+# The repo's `.claude/` config directory is a path, not attribution; strip it first.
+if grep -v '^#' "$MSG_FILE" | sed 's#\.claude/##g' \
+    | grep -qiE 'claude|anthropic|copilot|chatgpt|openai|generated with'; then
+    fail "commit message mentions an AI tool."
+fi
+
+AUTHOR=$(git var GIT_AUTHOR_IDENT | sed 's/ [0-9]* [-+][0-9]*$//')
+COMMITTER=$(git var GIT_COMMITTER_IDENT | sed 's/ [0-9]* [-+][0-9]*$//')
+
+[ "$AUTHOR" = "$EXPECTED" ] || fail "author is '$AUTHOR', expected '$EXPECTED'."
+[ "$COMMITTER" = "$EXPECTED" ] || fail "committer is '$COMMITTER', expected '$EXPECTED'."
+
+exit 0
