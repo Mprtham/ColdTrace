@@ -33,6 +33,29 @@ def test_missing_database_url_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> N
         settings.require_database_url()
 
 
+def test_groq_without_key_fails_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src import llm
+
+    settings = Settings(_env_file=None, llm_provider="groq")  # type: ignore[call-arg]
+    monkeypatch.setattr(llm, "get_settings", lambda: settings)
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        llm.get_llm()
+
+
+def test_groq_builds_chat_groq(monkeypatch: pytest.MonkeyPatch) -> None:
+    from langchain_groq import ChatGroq
+
+    from src import llm
+
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None, llm_provider="groq", groq_api_key="gsk-test"
+    )
+    monkeypatch.setattr(llm, "get_settings", lambda: settings)
+    model = llm.get_llm()
+    assert isinstance(model, ChatGroq)
+    assert model.model_name == "llama-3.3-70b-versatile"
+
+
 def test_env_overrides_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "deepseek")
     monkeypatch.setenv("DEEPSEEK_MODEL", "some-model-id")

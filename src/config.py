@@ -50,11 +50,13 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
 
     # LLM: Ollama locally until a DeepSeek key is available
-    llm_provider: Literal["ollama", "deepseek"] = "ollama"
+    llm_provider: Literal["ollama", "deepseek", "groq"] = "ollama"
     ollama_model: str = "qwen2.5:7b"
     ollama_base_url: str = "http://localhost:11434"
     deepseek_api_key: str | None = None
     deepseek_model: str | None = None  # set from GET api.deepseek.com/v1/models
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
 
     @field_validator("database_url")
     @classmethod
@@ -84,7 +86,13 @@ class Settings(BaseSettings):
         found = [self.coldtrace_admin_password, self.coldtrace_agent_password]
         if self.database_url:
             found.append(make_url(self.database_url).password)
-        found += [self.deepseek_api_key, self.qdrant_api_key, self.api_key, self.ui_password]
+        found += [
+            self.deepseek_api_key,
+            self.groq_api_key,
+            self.qdrant_api_key,
+            self.api_key,
+            self.ui_password,
+        ]
         return [s for s in found if s]
 
 

@@ -29,6 +29,10 @@ services:
         sync: false
       - key: DEEPSEEK_MODEL # the id GET https://api.deepseek.com/v1/models returns
         sync: false
+      - key: GROQ_API_KEY # only read when LLM_PROVIDER=groq; leave blank otherwise
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
       - key: CLOCK_MODE # the fleet is static synthetic data; replay keeps it "live"
         value: replay
       - key: QDRANT_PATH # in-memory; the 8 SOP chunks are rebuilt at startup

@@ -60,8 +60,8 @@ def main() -> None:
     if get_client.cache_info().currsize:  # close Qdrant before interpreter shutdown
         get_client().close()
 
-    model = (
-        settings.deepseek_model if settings.llm_provider == "deepseek" else settings.ollama_model
+    model = {"deepseek": settings.deepseek_model, "groq": settings.groq_model}.get(
+        settings.llm_provider, settings.ollama_model
     )
     print(f"\nQUESTION  {r.question}")
     print(f"INTENT    {r.intent}   (clock {r.as_of:%Y-%m-%d %H:%M} UTC)" if r.as_of else "")

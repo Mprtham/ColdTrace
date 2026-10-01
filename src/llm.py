@@ -23,6 +23,17 @@ def get_llm() -> BaseChatModel:
             base_url=DEEPSEEK_BASE_URL,
             temperature=0,
         )
+    if settings.llm_provider == "groq":
+        if not settings.groq_api_key:
+            raise RuntimeError("LLM_PROVIDER=groq needs GROQ_API_KEY")
+        from langchain_groq import ChatGroq
+        from pydantic import SecretStr
+
+        return ChatGroq(
+            model=settings.groq_model,
+            api_key=SecretStr(settings.groq_api_key),
+            temperature=0,
+        )
     from langchain_ollama import ChatOllama
 
     return ChatOllama(model=settings.ollama_model, base_url=settings.ollama_base_url, temperature=0)
