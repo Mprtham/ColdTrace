@@ -98,3 +98,13 @@ def test_chunk_metadata() -> None:
 def test_ingest_is_idempotent(client: QdrantClient) -> None:
     ingest(client)
     assert client.count(COLLECTION).count == 8
+
+
+def test_ensure_sop_loaded_only_when_empty() -> None:
+    from scripts.ingest_sop_qdrant import ensure_sop_loaded
+
+    fresh = QdrantClient(":memory:")
+    assert ensure_sop_loaded(fresh) == 8
+    assert ensure_sop_loaded(fresh) == 0  # already there: no rebuild
+    assert search_sop("escalation", client=fresh)[0].version == "3.0"
+    fresh.close()

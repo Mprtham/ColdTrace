@@ -1,0 +1,65 @@
+# Render Blueprint — two free web services (docs/DESIGN.md §7 Phase 6).
+#
+# Before the first deploy, run setup_db and both ingests from your machine (README).
+# Secrets are `sync: false`: Render asks for them when you create the Blueprint.
+#
+# DATABASE_URL here is the coldtrace_agent URL, not the Neon owner URL: the API only ever
+# connects as coldtrace_agent, so the schema owner's password never reaches Render.
+
+services:
+  - type: web
+    name: coldtrace-api
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --frozen --no-dev uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: DATABASE_URL # postgresql://coldtrace_agent:<password>@<neon-host>/<db>?sslmode=require
+        sync: false
+      - key: COLDTRACE_AGENT_PASSWORD
+        sync: false
+      - key: API_KEY # shared with the UI below; every route but /health requires it
+        generateValue: true
+      - key: LLM_PROVIDER
+        value: deepseek
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_MODEL # the id GET https://api.deepseek.com/v1/models returns
+        sync: false
+      - key: CLOCK_MODE # the fleet is static synthetic data; replay keeps it "live"
+        value: replay
+      - key: QDRANT_PATH # in-memory; the 8 SOP chunks are rebuilt at startup
+        value: ":memory:"
+      - key: HF_HUB_DISABLE_SYMLINKS_WARNING
+        value: "1"
+
+  - type: web
+    name: coldtrace-ui
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: >-
+      uv run --frozen --no-dev streamlit run ui/app.py
+      --server.port $PORT --server.address 0.0.0.0 --server.headless true
+      --browser.gatherUsageStats false
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: API_URL # the API's public URL, e.g. https://coldtrace-api.onrender.com
+        sync: false
+      - key: API_KEY
+        fromService:
+          type: web
+          name: coldtrace-api
+          envVarKey: API_KEY
+      - key: UI_PASSWORD # optional screen in front of the public UI
+        sync: false
+      - key: LLM_PROVIDER # only labels the cost footer
+        value: deepseek
+      - key: LLM_PRICE_IN_PER_MTOK # USD per million tokens, from DeepSeek's pricing page
+        sync: false
+      - key: LLM_PRICE_OUT_PER_MTOK
+        sync: false

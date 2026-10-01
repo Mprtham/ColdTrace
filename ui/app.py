@@ -11,6 +11,7 @@ filterable by session, tool and decision, with a chain check.
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
 from typing import Any
 
@@ -32,6 +33,17 @@ TOOL_NAMES = [
 
 st.set_page_config(page_title="ColdTrace", page_icon="❄", layout="wide")
 settings = get_settings()
+
+if settings.ui_password and not st.session_state.get("unlocked"):
+    st.markdown("### ❄ ColdTrace")
+    entered = st.text_input("Password", type="password")
+    if entered and secrets.compare_digest(entered, settings.ui_password):
+        st.session_state.unlocked = True
+        st.rerun()
+    elif entered:
+        st.error("Wrong password.")
+    st.stop()
+
 client = api.make_client()
 state = st.session_state
 state.setdefault("session_id", str(uuid.uuid4()))

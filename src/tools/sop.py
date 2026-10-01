@@ -47,7 +47,9 @@ def embed(texts: list[str]) -> list[list[float]]:
 def get_client() -> QdrantClient:
     settings = get_settings()
     if settings.qdrant_url:
-        return QdrantClient(url=settings.qdrant_url)
+        return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    if settings.qdrant_path == ":memory:":
+        return QdrantClient(":memory:")  # rebuilt at API startup; see ensure_sop_loaded()
     return QdrantClient(path=settings.qdrant_path)
 
 

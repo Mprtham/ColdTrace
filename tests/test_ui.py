@@ -333,3 +333,21 @@ def test_packages_import_outside_repo_root(tmp_path: Path) -> None:
         env={k: v for k, v in __import__("os").environ.items() if k != "PYTHONPATH"},
     )
     assert done.returncode == 0, done.stderr
+
+
+def test_client_sends_api_key_header() -> None:
+    assert ColdTraceClient("http://api.test", api_key="k1")._http.headers["X-API-Key"] == "k1"
+    assert "X-API-Key" not in ColdTraceClient("http://api.test")._http.headers
+
+
+def test_ui_password_screen(fake: FakeClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import Settings
+
+    guarded = Settings(_env_file=None, ui_password="letmein")  # type: ignore[call-arg]
+    monkeypatch.setattr("src.config.get_settings", lambda: guarded)
+    at = _app()
+    assert not at.tabs  # nothing behind the screen yet
+    at.text_input[0].input("wrong").run()
+    assert any("Wrong password" in e.value for e in at.error)
+    at.text_input[0].input("letmein").run()
+    assert len(at.tabs) == 2

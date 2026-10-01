@@ -20,7 +20,7 @@ from qdrant_client import QdrantClient, models
 from src.config import get_settings
 from src.tools.sop import COLLECTION, date_key, embed, get_client
 
-POLICY_DIR = Path("data/policy")
+POLICY_DIR = Path(__file__).resolve().parents[1] / "data" / "policy"
 SECTION_RE = re.compile(r"^## Section (\S+) — (.+)$", re.M)
 CARGO_RE = re.compile(r"^Cargo type:\s*(\S+)\s*$", re.M)
 HEADER_RE = re.compile(r"^(effective_date|version):\s*(\S+)\s*$", re.M)
@@ -110,6 +110,14 @@ def ingest(client: QdrantClient, policy_dir: Path = POLICY_DIR) -> int:
         ],
     )
     return len(chunks)
+
+
+def ensure_sop_loaded(client: QdrantClient, policy_dir: Path = POLICY_DIR) -> int:
+    """Load the SOP only if the collection is missing or empty. Returns chunks loaded (0 if
+    already there). Lets an in-memory Qdrant rebuild itself on every API start."""
+    if client.collection_exists(COLLECTION) and client.count(COLLECTION).count > 0:
+        return 0
+    return ingest(client, policy_dir)
 
 
 def main() -> None:

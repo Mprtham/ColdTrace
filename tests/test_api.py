@@ -214,3 +214,32 @@ def test_verify_chain_endpoint(client: TestClient) -> None:
 
 def test_health(client: TestClient) -> None:
     assert client.get("/health").json()["database"] == "ok"
+
+
+# --- API key (deploy) ------------------------------------------------------------------
+
+
+@pytest.fixture
+def locked(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    from api import main
+    from src.config import Settings
+
+    keyed = Settings(_env_file=None, api_key="s3cret-key")  # type: ignore[call-arg]
+    monkeypatch.setattr(main, "get_settings", lambda: keyed)
+    return client
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("post", "/query"), ("post", "/decision"), ("get", "/audit"), ("get", "/audit/verify"),
+     ("get", "/audit/1")],
+)  # fmt: skip
+def test_routes_need_api_key_when_set(locked: TestClient, method: str, path: str) -> None:
+    assert getattr(locked, method)(path).status_code == 401
+    wrong = getattr(locked, method)(path, headers={"X-API-Key": "nope"})
+    assert wrong.status_code == 401
+
+
+def test_right_key_passes_and_health_stays_open(locked: TestClient) -> None:
+    assert locked.get("/audit", headers={"X-API-Key": "s3cret-key"}).status_code == 200
+    assert locked.get("/health").status_code == 200

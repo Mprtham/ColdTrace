@@ -15,15 +15,17 @@ errors to status codes. No agent logic lives here.
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from scripts.ingest_sop_qdrant import ensure_sop_loaded
 from src.audit import (
     MAX_PAGE,
     current_decision,
@@ -51,6 +53,9 @@ ToolName = Literal[
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # With an in-memory Qdrant (the free-tier deploy), the SOP is rebuilt on each start.
+    if not get_settings().qdrant_url:
+        ensure_sop_loaded(get_client())
     yield
     if get_client.cache_info().currsize:
         get_client().close()
@@ -81,6 +86,13 @@ def get_tools() -> dict[str, ToolSpec]:
     return TOOLS
 
 
+def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
+    expected = get_settings().api_key
+    if expected and not (x_api_key and secrets.compare_digest(x_api_key, expected)):
+        raise HTTPException(401, detail="missing or wrong X-API-Key")
+
+
+Protected = [Depends(require_api_key)]
 ConnDep = Annotated[Conn, Depends(get_conn)]
 LlmDep = Annotated[Any, Depends(get_llm)]
 ToolsDep = Annotated[dict[str, ToolSpec], Depends(get_tools)]
@@ -171,7 +183,7 @@ class ChainResponse(BaseModel):
 # --- Routes ----------------------------------------------------------------------------
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=Protected)
 def query(
     body: QueryRequest,
     conn: ConnDep,
@@ -201,7 +213,7 @@ def query(
     )
 
 
-@app.post("/decision", response_model=DecisionResponse)
+@app.post("/decision", response_model=DecisionResponse, dependencies=Protected)
 def decision(body: DecisionRequest, conn: ConnDep) -> DecisionResponse:
     try:
         entry = write_decision(
@@ -222,7 +234,7 @@ def decision(body: DecisionRequest, conn: ConnDep) -> DecisionResponse:
     )
 
 
-@app.get("/audit", response_model=AuditPageResponse)
+@app.get("/audit", response_model=AuditPageResponse, dependencies=Protected)
 def audit(
     conn: ConnDep,
     session_id: UUID | None = None,
@@ -242,7 +254,7 @@ def audit(
     return AuditPageResponse(items=[_item(row) for row in page.items], next_cursor=page.next_cursor)
 
 
-@app.get("/audit/verify", response_model=ChainResponse)
+@app.get("/audit/verify", response_model=ChainResponse, dependencies=Protected)
 def audit_verify(conn: ConnDep) -> ChainResponse:
     report = verify_chain(conn)
     return ChainResponse(
@@ -253,7 +265,7 @@ def audit_verify(conn: ConnDep) -> ChainResponse:
     )
 
 
-@app.get("/audit/{log_id}")
+@app.get("/audit/{log_id}", dependencies=Protected)
 def audit_row(log_id: int, conn: ConnDep) -> dict[str, Any]:
     row = get_audit_row(conn, log_id)
     if row is None:

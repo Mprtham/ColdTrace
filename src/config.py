@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # Qdrant: local on-disk mode unless a server URL is given
     qdrant_path: str = "./qdrant_storage"
     qdrant_url: str | None = None
+    qdrant_api_key: str | None = None  # Qdrant Cloud
+
+    # Shared secret for the API. When set, every route but /health requires the
+    # X-API-Key header, and the UI sends it. Leave unset for local development only.
+    api_key: str | None = None
+    # Optional password screen in front of the UI.
+    ui_password: str | None = None
 
     # Embeddings (docs/DESIGN.md §4.3 — locked to 384-dim)
     embedding_model: str = "BAAI/bge-small-en-v1.5"
@@ -77,7 +84,7 @@ class Settings(BaseSettings):
         found = [self.coldtrace_admin_password, self.coldtrace_agent_password]
         if self.database_url:
             found.append(make_url(self.database_url).password)
-        found.append(self.deepseek_api_key)
+        found += [self.deepseek_api_key, self.qdrant_api_key, self.api_key, self.ui_password]
         return [s for s in found if s]
 
 

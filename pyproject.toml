@@ -16,7 +16,6 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.4",
     "qdrant-client>=1.12",
-    "sentence-transformers>=6.1.0",
     "sqlalchemy>=2.0",
     "streamlit>=1.40",
     "uvicorn>=0.30",

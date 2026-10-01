@@ -22,9 +22,14 @@ class ApiError(RuntimeError):
 
 
 class ColdTraceClient:
-    def __init__(self, base_url: str, *, http: httpx.Client | None = None) -> None:
+    def __init__(
+        self, base_url: str, *, api_key: str | None = None, http: httpx.Client | None = None
+    ) -> None:
         self.base_url = base_url.rstrip("/")
-        self._http = http or httpx.Client(base_url=self.base_url, timeout=DEFAULT_TIMEOUT_S)
+        headers = {"X-API-Key": api_key} if api_key else {}
+        self._http = http or httpx.Client(
+            base_url=self.base_url, timeout=DEFAULT_TIMEOUT_S, headers=headers
+        )
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/health")
@@ -79,4 +84,5 @@ class ColdTraceClient:
 
 
 def make_client() -> ColdTraceClient:
-    return ColdTraceClient(get_settings().api_url)
+    settings = get_settings()
+    return ColdTraceClient(settings.api_url, api_key=settings.api_key)
