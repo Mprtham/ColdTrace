@@ -24,7 +24,7 @@ services:
       - key: API_KEY # shared with the UI below; every route but /health requires it
         generateValue: true
       - key: LLM_PROVIDER
-        value: deepseek
+        value: groq
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: DEEPSEEK_MODEL # the id GET https://api.deepseek.com/v1/models returns
@@ -62,8 +62,8 @@ services:
       - key: UI_PASSWORD # optional screen in front of the public UI
         sync: false
       - key: LLM_PROVIDER # only labels the cost footer
-        value: deepseek
-      - key: LLM_PRICE_IN_PER_MTOK # USD per million tokens, from DeepSeek's pricing page
+        value: groq
+      - key: LLM_PRICE_IN_PER_MTOK # USD per million tokens, from Groq's pricing page
         sync: false
       - key: LLM_PRICE_OUT_PER_MTOK
         sync: false
