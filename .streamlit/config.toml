@@ -1,0 +1,21 @@
+# Dark theme for the dispatcher UI. ui/app.py adds fonts and accents on top in CSS; the
+# base must be dark here too, so Streamlit's own text, widgets and tables stay readable
+# and st.context.theme reports "dark" (ui/charts.py picks its palette from it).
+
+[theme]
+base = "dark"
+primaryColor = "#22C55E"
+backgroundColor = "#0F0F0F"
+secondaryBackgroundColor = "#111622"
+textColor = "#E2E8F0"
+borderColor = "#1E293B"
+baseRadius = "4px"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
+headingFont = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+
+[theme.sidebar]
+backgroundColor = "#111622"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#E2E8F0"
+borderColor = "#1E293B"

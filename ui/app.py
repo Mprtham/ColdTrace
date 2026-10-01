@@ -32,6 +32,44 @@ TOOL_NAMES = [
 ]
 
 st.set_page_config(page_title="ColdTrace", page_icon="❄", layout="wide")
+# Colours and base dark mode live in .streamlit/config.toml; this adds fonts and accents.
+st.markdown(
+    """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+h1, h2, h3, h4 { font-family: 'Space Grotesk', sans-serif; }
+
+.stApp { background-color: #0F0F0F; color: #E2E8F0; }
+section[data-testid="stSidebar"] {
+    background-color: #111622;
+    border-right: 1px solid #1E293B;
+}
+.stButton button {
+    background: transparent;
+    border: 1px solid #22C55E;
+    color: #22C55E;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    border-radius: 4px;
+}
+.stButton button:hover { background: #22C55E; color: #0F0F0F; }
+.stTabs [data-baseweb="tab"] {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    color: #64748B;
+}
+.stTabs [aria-selected="true"] { color: #22C55E !important; }
+div[data-testid="stExpander"] {
+    border: 1px solid #1E293B !important;
+    border-radius: 4px !important;
+    background: #111622 !important;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 settings = get_settings()
 
 if settings.ui_password and not st.session_state.get("unlocked"):
@@ -67,9 +105,66 @@ def cost_text(tokens_in: int | None, tokens_out: int | None) -> str:
 
 # --- Sidebar ---------------------------------------------------------------------------
 
+HEADING_STYLE = "font-family:Space Grotesk;font-weight:600;color:#E2E8F0;font-size:0.85rem"
+BODY_STYLE = "color:#94A3B8;font-size:0.78rem;line-height:1.6"
+
+ABOUT = [
+    (
+        "WHAT IS THIS?",
+        "ColdTrace is an AI copilot for cold-chain logistics dispatchers. It monitors "
+        "refrigerated freight, checks sensor data quality before any AI reasoning happens, "
+        "retrieves the correct SOP rule, and delivers a recommendation — showing the evidence "
+        "before the verdict so a dispatcher can verify before acting.",
+    ),
+    (
+        "WHAT IS AN FDE?",
+        "A Forward Deployed Engineer embeds with a client, understands their real operational "
+        "problem, and builds a working AI system — not a demo. ColdTrace was built in this "
+        "style: the reference project was read line by line, seven gaps between its "
+        "documentation and its shipped code were identified, and each one was closed.",
+    ),
+    (
+        "HOW IT WORKS",
+        "1. Your question is classified by intent<br>"
+        "2. A gather node collects only the evidence that question needs<br>"
+        "3. A data quality gate flags stale or faulty sensor readings<br>"
+        "4. A separate recommend node reasons over evidence only — never the gather "
+        "transcript<br>"
+        "5. Every decision is logged to a hash-chained, append-only audit trail",
+    ),
+    (
+        "WHAT IT CAN DO",
+        "· Find trucks near a location with temperature problems<br>"
+        "· Check whether a sensor is trustworthy or stuck<br>"
+        "· Identify high-risk shipments by delay probability<br>"
+        "· Retrieve the correct SOP rule for a cargo type<br>"
+        "· Show route weather conditions<br>"
+        "· Log and verify every decision with a hash chain",
+    ),
+    (
+        "WHAT IT CANNOT DO",
+        "· It runs on synthetic data — not a live IoT fleet feed<br>"
+        "· The audit log detects tampering but is not a certified WORM store<br>"
+        "· The SOP covers three rules from a mock document, not a real carrier's rulebook<br>"
+        "· It is single-tenant with no user authentication<br>"
+        "· Groq free tier has rate limits — queries may slow under load",
+    ),
+]
+
+
+def html(markup: str) -> None:
+    st.markdown(markup, unsafe_allow_html=True)
+
+
 with st.sidebar:
-    st.markdown("### ❄ ColdTrace")
-    st.caption("Evidence first, then a verdict. Every decision is hash-chained.")
+    html("<h2 style='font-family:Space Grotesk;color:#22C55E;margin-bottom:0'>❄ ColdTrace</h2>")
+    html(
+        "<p style='color:#64748B;font-size:0.8rem;margin-top:4px'>"
+        "Evidence first, then a verdict. Every decision is hash-chained.</p>"
+    )
+
+    st.divider()
+
     health: dict[str, Any] | None
     try:
         health = client.health()
@@ -79,11 +174,39 @@ with st.sidebar:
     except api.ApiError as exc:
         health = None
         st.error(f"API unavailable — {exc.detail}")
+
     st.caption(f"Session `{state.session_id[:8]}`")
     if st.button("New session", width="stretch"):
         state.session_id = str(uuid.uuid4())
         state.turns = []
         st.rerun()
+
+    st.divider()
+
+    for i, (title, body) in enumerate(ABOUT):
+        gap = ";margin-top:16px" if i else ""
+        html(f"<p style='{HEADING_STYLE}{gap}'>{title}</p>")
+        html(f"<p style='{BODY_STYLE}'>{body}</p>")
+
+    st.divider()
+
+    html(f"<p style='{HEADING_STYLE}'>STACK</p>")
+    html(
+        "<p style='color:#64748B;font-size:0.75rem;font-family:JetBrains Mono,monospace'>"
+        "LangGraph · FastAPI · PostgreSQL (Neon)<br>"
+        "Qdrant · bge-small-en-v1.5 · Groq API<br>"
+        "Streamlit · Render</p>"
+    )
+
+    st.divider()
+
+    link = "color:#22C55E;text-decoration:none"
+    html(
+        "<p style='color:#334155;font-size:0.72rem;text-align:center;font-family:Space Grotesk'>"
+        f"Built by <a href='https://linkedin.com/in/prathameshmishra07' style='{link}'>"
+        "Prathamesh Mishra</a> · "
+        f"<a href='https://github.com/Mprtham/ColdTrace' style='{link}'>GitHub</a></p>"
+    )
 
 console, audit_tab = st.tabs(["Dispatch console", "Audit log"])
 
