@@ -74,6 +74,10 @@ class ColdTraceClient:
         except httpx.HTTPError as exc:
             raise ApiError(0, f"API unreachable at {self.base_url} ({type(exc).__name__})") from exc
         if response.status_code >= 400:
+            if response.text.lstrip().startswith("<"):
+                raise ApiError(
+                    response.status_code, "API is starting up — please refresh in 30 seconds"
+                )
             try:
                 detail = response.json().get("detail", response.text)
             except ValueError:
