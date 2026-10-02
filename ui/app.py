@@ -1,4 +1,4 @@
-"""ColdTrace dispatcher UI — docs/DESIGN.md §5.2 steps 1, 8, 9.
+"""ColdTrace dispatcher UI, per docs/DESIGN.md §5.2 steps 1, 8, 9.
 
     uv run streamlit run ui/app.py        (API must be running: uvicorn api.main:app)
 
@@ -106,50 +106,6 @@ def cost_text(tokens_in: int | None, tokens_out: int | None) -> str:
 # --- Sidebar ---------------------------------------------------------------------------
 
 HEADING_STYLE = "font-family:Space Grotesk;font-weight:600;color:#E2E8F0;font-size:0.85rem"
-BODY_STYLE = "color:#94A3B8;font-size:0.78rem;line-height:1.6"
-
-ABOUT = [
-    (
-        "WHAT IS THIS?",
-        "ColdTrace is an AI copilot for cold-chain logistics dispatchers. It monitors "
-        "refrigerated freight, checks sensor data quality before any AI reasoning happens, "
-        "retrieves the correct SOP rule, and delivers a recommendation — showing the evidence "
-        "before the verdict so a dispatcher can verify before acting.",
-    ),
-    (
-        "WHAT IS AN FDE?",
-        "A Forward Deployed Engineer embeds with a client, understands their real operational "
-        "problem, and builds a working AI system — not a demo. ColdTrace was built in this "
-        "style: the reference project was read line by line, seven gaps between its "
-        "documentation and its shipped code were identified, and each one was closed.",
-    ),
-    (
-        "HOW IT WORKS",
-        "1. Your question is classified by intent<br>"
-        "2. A gather node collects only the evidence that question needs<br>"
-        "3. A data quality gate flags stale or faulty sensor readings<br>"
-        "4. A separate recommend node reasons over evidence only — never the gather "
-        "transcript<br>"
-        "5. Every decision is logged to a hash-chained, append-only audit trail",
-    ),
-    (
-        "WHAT IT CAN DO",
-        "· Find trucks near a location with temperature problems<br>"
-        "· Check whether a sensor is trustworthy or stuck<br>"
-        "· Identify high-risk shipments by delay probability<br>"
-        "· Retrieve the correct SOP rule for a cargo type<br>"
-        "· Show route weather conditions<br>"
-        "· Log and verify every decision with a hash chain",
-    ),
-    (
-        "WHAT IT CANNOT DO",
-        "· It runs on synthetic data — not a live IoT fleet feed<br>"
-        "· The audit log detects tampering but is not a certified WORM store<br>"
-        "· The SOP covers three rules from a mock document, not a real carrier's rulebook<br>"
-        "· It is single-tenant with no user authentication<br>"
-        "· Groq free tier has rate limits — queries may slow under load",
-    ),
-]
 
 
 def html(markup: str) -> None:
@@ -160,7 +116,7 @@ with st.sidebar:
     html("<h2 style='font-family:Space Grotesk;color:#22C55E;margin-bottom:0'>❄ ColdTrace</h2>")
     html(
         "<p style='color:#64748B;font-size:0.8rem;margin-top:4px'>"
-        "Evidence first, then a verdict. Every decision is hash-chained.</p>"
+        "Evidence first. Verdict second.</p>"
     )
 
     st.divider()
@@ -173,20 +129,13 @@ with st.sidebar:
             st.caption("Replay clock: 'now' is the newest reading in the database.")
     except api.ApiError as exc:
         health = None
-        st.error(f"API unavailable — {exc.detail}")
+        st.error(f"API unavailable: {exc.detail}")
 
     st.caption(f"Session `{state.session_id[:8]}`")
     if st.button("New session", width="stretch"):
         state.session_id = str(uuid.uuid4())
         state.turns = []
         st.rerun()
-
-    st.divider()
-
-    for i, (title, body) in enumerate(ABOUT):
-        gap = ";margin-top:16px" if i else ""
-        html(f"<p style='{HEADING_STYLE}{gap}'>{title}</p>")
-        html(f"<p style='{BODY_STYLE}'>{body}</p>")
 
     st.divider()
 
@@ -208,6 +157,177 @@ with st.sidebar:
         f"<a href='https://github.com/Mprtham/ColdTrace' style='{link}'>GitHub</a></p>"
     )
 
+# --- Landing ---------------------------------------------------------------------------
+
+EXAMPLE_QUESTIONS = [
+    "Find any trucks near Los Angeles with temperature problems and tell me what to do.",
+    "Show the temperature history for shipment SHP-026-04. Is its sensor trustworthy?",
+    "What does the SOP say about escalation thresholds for fresh perishables?",
+]
+
+
+def render_landing() -> None:
+    html(
+        """
+<style>
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.lc-eyebrow {
+    display:inline-flex;align-items:center;gap:8px;
+    background:#1a2e1a;border:1px solid #22C55E33;
+    padding:6px 14px;border-radius:999px;margin-bottom:20px;
+}
+.lc-eyebrow-dot {
+    width:7px;height:7px;border-radius:50%;background:#22C55E;
+    animation:pulse-dot 2s ease-in-out infinite;
+}
+.lc-eyebrow-text {
+    font-family:'Space Grotesk',sans-serif;font-size:0.72rem;
+    font-weight:600;color:#22C55E;letter-spacing:0.12em;text-transform:uppercase;
+}
+.lc-hero-wrap { text-align:center; padding:40px 0 36px 0; }
+.lc-hero-h1 {
+    font-family:'Space Grotesk',sans-serif;font-size:2.6rem;
+    font-weight:700;color:#F1F5F9;line-height:1.12;margin:0 0 16px 0;
+}
+.lc-hero-sub {
+    font-size:0.95rem;color:#64748B;max-width:520px;
+    margin:0 auto;line-height:1.75;
+}
+.lc-step-row {
+    display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:#1E293B;border:1px solid #1E293B;border-radius:6px;
+    overflow:hidden;margin:32px 0;
+}
+.lc-step {
+    background:#0F0F0F;padding:28px 24px;position:relative;
+}
+.lc-step-num {
+    font-family:'JetBrains Mono',monospace;font-size:0.68rem;
+    color:#22C55E;letter-spacing:0.15em;margin-bottom:10px;
+    display:flex;align-items:center;gap:8px;
+}
+.lc-step-num::after {
+    content:'';flex:1;height:1px;background:#22C55E33;
+}
+.lc-step-title {
+    font-family:'Space Grotesk',sans-serif;font-size:0.95rem;
+    font-weight:600;color:#E2E8F0;margin-bottom:10px;
+}
+.lc-step-body {
+    font-size:0.8rem;color:#64748B;line-height:1.7;
+}
+.lc-caps-row {
+    display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:8px 0 32px 0;
+}
+.lc-cap-block { padding:20px 0; }
+.lc-cap-label {
+    font-family:'Space Grotesk',sans-serif;font-size:0.68rem;
+    font-weight:700;color:#22C55E;letter-spacing:0.15em;
+    text-transform:uppercase;margin-bottom:12px;
+    padding-bottom:8px;border-bottom:1px solid #1E293B;
+}
+.lc-cap-item {
+    font-size:0.8rem;color:#64748B;line-height:1;
+    padding:6px 0 6px 16px;position:relative;
+}
+.lc-cap-item::before { content:"·";color:#22C55E;position:absolute;left:0;font-size:1rem; }
+.lc-divider { border:none;border-top:1px solid #1E293B;margin:8px 0 24px 0; }
+.lc-try-label {
+    font-family:'Space Grotesk',sans-serif;font-size:0.68rem;
+    font-weight:700;color:#475569;letter-spacing:0.15em;
+    text-transform:uppercase;text-align:center;margin-bottom:16px;
+}
+</style>
+
+<div class="lc-hero-wrap">
+    <div style="display:flex;justify-content:center;margin-bottom:20px">
+        <div class="lc-eyebrow">
+            <div class="lc-eyebrow-dot"></div>
+            <span class="lc-eyebrow-text">FDE Portfolio Project</span>
+        </div>
+    </div>
+    <h1 class="lc-hero-h1">Built for the person making<br>the call at 3am</h1>
+    <p class="lc-hero-sub">
+        Cold chain systems generate records. Most of them arrive too late,
+        in a form nobody can act on. This copilot shows its reasoning
+        before it tells you what to do.
+    </p>
+</div>
+
+<div class="lc-step-row">
+    <div class="lc-step">
+        <div class="lc-step-num">01</div>
+        <div class="lc-step-title">The problem I saw</div>
+        <div class="lc-step-body">
+            A dispatcher monitoring 50 refrigerated trucks has to check sensor data,
+            look up route conditions, cross-reference a 40-page SOP, and make a call,
+            all at once, at 2am. Most cold chain dashboards are built for Monday morning
+            review, not for the person who has to act right now.
+        </div>
+    </div>
+    <div class="lc-step">
+        <div class="lc-step-num">02</div>
+        <div class="lc-step-title">What I did differently</div>
+        <div class="lc-step-body">
+            I found an FDE reference project and read every file line by line,
+            then compared the code against its own Technical Design Document.
+            Seven gaps. The audit log that claimed immutability could not write.
+            The security layer checked one string. The agent ran a fixed script,
+            not reasoning. I closed each gap with a traceable decision.
+        </div>
+    </div>
+    <div class="lc-step">
+        <div class="lc-step-num">03</div>
+        <div class="lc-step-title">How it works</div>
+        <div class="lc-step-body">
+            Your question is classified by intent. A gather node collects only
+            the evidence that question needs. A data quality gate runs before
+            the AI sees any sensor reading. A separate node reasons over the
+            evidence only. Every decision is logged to a hash-chained,
+            append-only audit trail.
+        </div>
+    </div>
+</div>
+
+<div class="lc-caps-row">
+    <div class="lc-cap-block">
+        <div class="lc-cap-label">What it can do</div>
+        <div class="lc-cap-item">Find trucks near a location with temperature problems</div>
+        <div class="lc-cap-item">Check whether a sensor reading is trustworthy or stuck</div>
+        <div class="lc-cap-item">Identify high-risk shipments by delay probability</div>
+        <div class="lc-cap-item">Retrieve the correct SOP rule for a cargo type</div>
+        <div class="lc-cap-item">Show route weather conditions along the truck path</div>
+        <div class="lc-cap-item">Log and verify every decision with a hash chain</div>
+    </div>
+    <div class="lc-cap-block">
+        <div class="lc-cap-label">Honest limitations</div>
+        <div class="lc-cap-item">Runs on synthetic data, not a live IoT fleet feed</div>
+        <div class="lc-cap-item">
+            Audit log detects tampering but is not a certified immutable store
+        </div>
+        <div class="lc-cap-item">SOP is a short mock document, not a real carrier rulebook</div>
+        <div class="lc-cap-item">Single tenant with no user authentication</div>
+        <div class="lc-cap-item">Groq free tier has rate limits under concurrent load</div>
+    </div>
+</div>
+
+<hr class="lc-divider">
+<div class="lc-try-label">Try asking</div>
+"""
+    )
+
+    for i, (col, q) in enumerate(zip(st.columns(3), EXAMPLE_QUESTIONS, strict=True)):
+        # Hands the question to the chat input path below, so it runs as a real query.
+        if col.button(q, width="stretch", key=f"eq-{i}", disabled=health is None):
+            state.pending_question = q
+            st.rerun()
+
+    html("<hr class='lc-divider'>")
+
+
+if not state.turns:
+    render_landing()
+
 console, audit_tab = st.tabs(["Dispatch console", "Audit log"])
 
 
@@ -216,11 +336,11 @@ console, audit_tab = st.tabs(["Dispatch console", "Audit log"])
 
 def render_evidence(evidence: list[dict[str, Any]], key: str) -> None:
     st.markdown("#### Evidence")
-    st.caption("What the gather node found — check this before trusting the verdict.")
+    st.caption("What the gather node found. Check this before trusting the verdict.")
     if not evidence:
         st.info("No tools were called for this question.")
     for i, call in enumerate(evidence, 1):
-        label = f"{i}. `{call['tool_name']}` — {summarise_call(call)}"
+        label = f"{i}. `{call['tool_name']}`: {summarise_call(call)}"
         with st.expander(label, expanded=i == 1):
             st.code(json.dumps(call["input"], ensure_ascii=False), language="json")
             if call.get("error"):
@@ -267,7 +387,7 @@ def render_verdict(turn: dict[str, Any], key: str) -> None:
     st.markdown("#### Verdict")
     st.caption("What the recommend node concluded from that evidence only.")
     st.markdown(r["verdict"])
-    st.markdown(f"**SOP cited:** {r['sop_cited'] or '—'}  \n**Confidence:** {r['confidence']}")
+    st.markdown(f"**SOP cited:** {r['sop_cited'] or 'none'}  \n**Confidence:** {r['confidence']}")
     for label in flag_labels(r["data_quality_flags"]):
         st.warning(label.removeprefix("⚠ "), icon="⚠️")  # icon + label, never color alone
     for caveat in r["caveats"]:
@@ -276,7 +396,7 @@ def render_verdict(turn: dict[str, Any], key: str) -> None:
     decision = turn.get("decision")
     if decision:
         verb = "Accepted" if decision["decision"] == "accepted" else "Overridden"
-        reason = f" — {decision['reason']}" if decision.get("reason") else ""
+        reason = f": {decision['reason']}" if decision.get("reason") else ""
         st.info(f"{verb}{reason} (audit row #{decision['log_id']})")
         return
     accept_col, override_col = st.columns(2)
@@ -294,7 +414,7 @@ def decide(turn: dict[str, Any], decision: str, reason: str | None) -> None:
         turn["decision"] = {"decision": decision, "reason": reason, "log_id": out["log_id"]}
         st.rerun()
     except api.ApiError as exc:
-        st.error(f"Decision not recorded — {exc.detail}")
+        st.error(f"Decision not recorded: {exc.detail}")
 
 
 def render_turn(turn: dict[str, Any], key: str) -> None:
@@ -323,20 +443,21 @@ def render_turn(turn: dict[str, Any], key: str) -> None:
 with console:
     if not state.turns:
         st.markdown(
-            "Ask about the fleet in plain words — for example *“Find any trucks near "
+            "Ask about the fleet in plain words, for example *“Find any trucks near "
             "Los Angeles with temperature problems and tell me what to do.”*"
         )
     for i, turn in enumerate(state.turns):
         render_turn(turn, str(i))
 
     question = st.chat_input("Ask about the fleet…", disabled=health is None)
+    question = question or state.pop("pending_question", None)
     if question:
-        with st.spinner("Gathering evidence and reasoning — a local model can take minutes…"):
+        with st.spinner("Gathering evidence and reasoning. A local model can take minutes…"):
             try:
                 response = client.query(question, state.session_id)
                 state.turns.append({"question": question, "response": response})
             except api.ApiError as exc:
-                state.turns.append({"question": question, "error": f"No answer — {exc.detail}"})
+                state.turns.append({"question": question, "error": f"No answer: {exc.detail}"})
         st.rerun()
 
 
@@ -360,13 +481,13 @@ with audit_tab:
         try:
             report = client.verify()
             if report["ok"]:
-                st.success(f"Chain intact — {report['rows_checked']} rows verified.")
+                st.success(f"Chain intact: {report['rows_checked']} rows verified.")
             else:
                 st.error(
                     f"Chain broken at row #{report['first_broken_log_id']}: {report['reason']}"
                 )
         except api.ApiError as exc:
-            st.error(f"Could not verify — {exc.detail}")
+            st.error(f"Could not verify: {exc.detail}")
 
     try:
         page = client.audit(
@@ -377,7 +498,7 @@ with audit_tab:
             cursor=state.audit_cursors[-1],
         )
     except api.ApiError as exc:
-        st.error(f"Audit log unavailable — {exc.detail}")
+        st.error(f"Audit log unavailable: {exc.detail}")
         page = {"items": [], "next_cursor": None}
 
     items = page["items"]
@@ -389,7 +510,7 @@ with audit_tab:
                 "Question": i["dispatcher_question"],
                 "Tools": ", ".join(t["tool_name"] for t in i["tools"]),
                 "Data quality": ", ".join(i["data_quality_flags"]) or "CLEAN",
-                "SOP cited": i["sop_clause_cited"] or "—",
+                "SOP cited": i["sop_clause_cited"] or "none",
                 "Decision": i["current_decision"],
                 "Reason": i["decision_reason"] or "",
                 "Tokens in/out": f"{i['token_count_in'] or 0:,} / {i['token_count_out'] or 0:,}",
@@ -417,16 +538,16 @@ with audit_tab:
         try:
             row = client.audit_row(chosen)
             st.markdown(f"**Question:** {row['dispatcher_question']}")
-            st.markdown(f"**Recommendation:** {row['final_recommendation'] or '—'}")
+            st.markdown(f"**Recommendation:** {row['final_recommendation'] or 'none'}")
             st.caption(
-                f"row_hash `{row['row_hash']}` · previous `{row['previous_row_hash'] or '—'}`"
+                f"row_hash `{row['row_hash']}` · previous `{row['previous_row_hash'] or 'none'}`"
             )
             for d in row["decisions"]:
-                reason = f" — {d['override_reason']}" if d["override_reason"] else ""
+                reason = f": {d['override_reason']}" if d["override_reason"] else ""
                 st.caption(f"Decision row #{d['log_id']}: {d['human_decision']}{reason}")
             with st.expander("Tool calls (full JSON, as stored)"):
                 st.json(row["tool_calls"], expanded=False)
         except api.ApiError as exc:
-            st.error(f"Row unavailable — {exc.detail}")
+            st.error(f"Row unavailable: {exc.detail}")
     else:
         st.caption("No audit rows match these filters.")

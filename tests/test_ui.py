@@ -286,7 +286,7 @@ def test_question_renders_evidence_and_verdict_panels(fake: FakeClient) -> None:
     assert fake.queries == [("Is TRK-026 ok?", at.session_state.session_id)]
     text = _texts(at)
     assert "#### Evidence" in text and "#### Verdict" in text
-    assert "`get_temperature_history` — 6 readings · quality: STALE_SENSOR×4" in text
+    assert "`get_temperature_history`: 6 readings · quality: STALE_SENSOR×4" in text
     assert "Sensor on TRK-026 looks stuck" in text
     (flag,) = at.warning
     assert flag.value.startswith("STALE_SENSOR — same temperature for 8+ readings")
@@ -316,7 +316,7 @@ def test_audit_tab_lists_rows_and_verifies_chain(fake: FakeClient) -> None:
     assert at.dataframe[0].value["Row"].tolist() == [7]
     verify = next(b for b in at.button if b.label == "Verify hash chain")
     verify.click().run()
-    assert any("Chain intact — 8 rows verified." in e.value for e in at.success)
+    assert any("Chain intact: 8 rows verified." in e.value for e in at.success)
 
 
 def test_packages_import_outside_repo_root(tmp_path: Path) -> None:
